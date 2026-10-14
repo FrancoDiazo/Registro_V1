@@ -4,11 +4,43 @@ Aplicación Laravel para registrar eventos laborales desde un navegador móvil, 
 
 ## Requisitos
 
-- PHP 8.2 o posterior con extensiones de Laravel y PostgreSQL (`pdo_pgsql`).
-- Composer 2.
-- PostgreSQL 14 o posterior.
-- Node.js 20 o posterior y npm, únicamente para ejecutar las pruebas del cliente offline.
+- Docker Desktop con Docker Compose v2 (forma recomendada de ejecutar la aplicación localmente).
+- Para ejecutar sin Docker: PHP 8.2 o posterior con las extensiones de Laravel y PostgreSQL (`pdo_pgsql`), Composer 2 y PostgreSQL 14 o posterior.
+- Node.js 20 o posterior y npm, únicamente para ejecutar las pruebas del cliente offline fuera de Docker.
 - HTTPS para la PWA en teléfonos. `localhost` se considera un contexto seguro en navegadores modernos.
+
+## Ejecución con Docker
+
+El stack Compose ejecuta Laravel/PHP y PostgreSQL en contenedores, conserva la base de datos en un volumen y monta el código para facilitar cambios durante el desarrollo. No necesitas instalar PHP, Composer ni PostgreSQL en el equipo anfitrión.
+
+```powershell
+Copy-Item .env.example .env
+```
+
+Edita `.env`: asigna un valor aleatorio a `DB_PASSWORD` (solo para desarrollo local) y configura `APP_KEY`. Si todavía no tienes una clave, deja `APP_KEY` vacía, construye la imagen y genérala desde el contenedor:
+
+```powershell
+docker compose build app
+docker compose run --rm --no-deps app php artisan key:generate
+docker compose up --build -d
+docker compose ps
+```
+
+La aplicación estará disponible en `http://localhost:8000`. El contenedor espera a que PostgreSQL esté listo y ejecuta `php artisan migrate --force` al arrancar. Para crear el primer administrador:
+
+```powershell
+docker compose exec app php artisan attendance:make-administrator
+```
+
+Los comandos interactivos de Artisan, Composer y las pruebas PHP se ejecutan dentro del contenedor de aplicación:
+
+```powershell
+docker compose exec app php artisan migrate:status
+docker compose exec app composer test
+docker compose --profile test run --rm node-tests
+```
+
+`docker compose down` detiene los servicios y conserva los datos de PostgreSQL. **`docker compose down --volumes` elimina el volumen de base de datos y sus datos**; úsalo solo si quieres borrar deliberadamente la base local. Esta configuración utiliza el servidor integrado de Artisan y está pensada para desarrollo local, no para exponer directamente a internet. Para producción se requiere, entre otras cosas, un servidor web/proxy con HTTPS, secretos seguros, configuración endurecida y una estrategia de despliegue/respaldos.
 
 ## Instalación local
 
