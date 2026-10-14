@@ -1,0 +1,12 @@
+{
+  "id": "/",
+  "name": "Asistencia",
+  "short_name": "Asistencia",
+  "description": "Registro técnico personal de asistencia laboral",
+  "lang": "es-CL",
+  "start_url": "/dashboard",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#FFFFFF",
+  "theme_color": "#D50032"
+}

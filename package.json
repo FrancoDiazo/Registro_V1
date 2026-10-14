@@ -1,0 +1,11 @@
+{
+  "name": "asistencia-pwa-tests",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "test": "node --test tests-js/offline-queue.test.js"
+  },
+  "devDependencies": {
+    "fake-indexeddb": "^6.2.4"
+  }
+}
