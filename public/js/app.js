@@ -35,13 +35,17 @@ import { OfflineQueue } from './offline-queue.js';
         const node = document.getElementById('sync-message');
         if (!node) return;
         node.textContent = text;
-        node.classList.remove('hidden', 'success', 'error');
+        node.classList.remove('hidden', 'success', 'error', 'info');
         if (kind) node.classList.add(kind);
     }
 
     function updateConnectionStatus() {
         const node = document.getElementById('connection-status');
         if (node) node.textContent = navigator.onLine ? 'En línea' : 'Sin conexión';
+        node?.parentElement?.setAttribute('data-online', String(navigator.onLine));
+        if (!navigator.onLine && activeAccountBinding) {
+            setMessage('Puedes marcar. El registro se guardará en este dispositivo.', 'info');
+        }
     }
 
     function formatLocalTimestamp(value) {
@@ -150,9 +154,7 @@ import { OfflineQueue } from './offline-queue.js';
             if (latest) latest.textContent = EVENT_LABELS[type];
             if (latestTime) latestTime.textContent = `${formatLocalTimestamp(event.occurred_at_device)} · pendiente`;
             await refreshQueue();
-            setMessage(navigator.onLine
-                ? 'Marca guardada en este dispositivo. Esperando confirmación del servidor.'
-                : 'Sin conexión: la marca quedó guardada en este dispositivo.', 'success');
+            setMessage('Registro guardado en el dispositivo. Pendiente de sincronización.', 'info');
             if (navigator.onLine) syncQueue();
         } catch (error) {
             setMessage(error.message || 'No se pudo guardar la marca local. No vuelvas a intentarlo hasta revisar el estado del dispositivo.', 'error');
@@ -224,7 +226,7 @@ import { OfflineQueue } from './offline-queue.js';
             confirmed = delivery.confirmed.length;
             if (delivery.error) {
                 await refreshQueue();
-                setMessage(`No se completó toda la sincronización. Las marcas pendientes permanecen en el dispositivo. ${delivery.error.message || ''}`, 'error');
+                setMessage(`No se pudo sincronizar. El registro permanece pendiente. ${delivery.error.message || ''}`, 'error');
                 if (delivery.error.retryable !== false) scheduleRetry();
                 return;
             }
@@ -239,7 +241,7 @@ import { OfflineQueue } from './offline-queue.js';
             await refreshQueue();
             if (currentRemaining.length) {
                 if (!eventErrors.length) {
-                    setMessage(`${currentRemaining.length} marca(s) permanecen en el dispositivo hasta recibir confirmación.`, 'error');
+                    setMessage('No se pudo sincronizar. El registro permanece pendiente.', 'error');
                     scheduleRetry();
                 }
             } else if (otherAccountRemaining) {
@@ -248,8 +250,8 @@ import { OfflineQueue } from './offline-queue.js';
             } else {
                 retryDelay = 2000;
                 if (confirmed) {
-                    setMessage('El servidor confirmó todas las marcas pendientes.', 'success');
-                    window.location.reload();
+                    setMessage('Registro sincronizado.', 'success');
+                    window.setTimeout(() => window.location.reload(), 1200);
                 }
             }
             if (confirmed && currentRemaining.length) window.location.reload();
@@ -298,6 +300,13 @@ import { OfflineQueue } from './offline-queue.js';
             activeAccountBinding = bindingRecord?.value || null;
         }
         const events = await refreshQueue();
+        if (!navigator.onLine) {
+            if (activeAccountBinding) {
+                updateConnectionStatus();
+            } else {
+                setMessage('Para marcar sin conexión, inicia sesión y prepara la aplicación mientras tengas internet.', 'error');
+            }
+        }
         if (navigator.onLine && document.querySelector('[data-offline-shell]')) reopenOnlineApp();
         else if (navigator.onLine && events.length) syncQueue();
 
@@ -308,10 +317,16 @@ import { OfflineQueue } from './offline-queue.js';
         window.addEventListener('online', () => {
             updateConnectionStatus();
             retryDelay = 2000;
+            if (activeAccountBinding) setMessage('Con conexión. Se revisarán las marcas pendientes para sincronización.', 'info');
             if (document.querySelector('[data-offline-shell]')) reopenOnlineApp();
             else syncQueue();
         });
-        window.addEventListener('offline', updateConnectionStatus);
+        window.addEventListener('offline', () => {
+            updateConnectionStatus();
+            if (!activeAccountBinding) {
+                setMessage('Para marcar sin conexión, inicia sesión y prepara la aplicación mientras tengas internet.', 'error');
+            }
+        });
         if ('serviceWorker' in navigator) {
             navigator.serviceWorker.register('/sw.js').catch((error) => {
                 setMessage(`No se pudo preparar el soporte PWA: ${error.message}`, 'error');

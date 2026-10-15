@@ -11,32 +11,38 @@
     <script type="module" src="/js/app.js"></script>
 </head>
 <body>
-<header class="topbar"><a class="brand" href="/dashboard">Asistencia</a></header>
-<main class="page" data-offline-shell>
+<a class="skip-link" href="#main-content">Saltar al contenido</a>
+<header class="topbar"><a class="product-name" href="/dashboard"><span class="product-name__eyebrow">Control de asistencia</span><span class="product-name__title">Registro laboral</span></a></header>
+<main class="page" data-offline-shell id="main-content">
     <section class="welcome">
         <p class="eyebrow">Modo sin conexión</p>
         <h1>Tu dispositivo no tiene internet</h1>
-        <p class="muted">Puedes guardar una marca localmente. Se enviará cuando vuelva la conexión y el servidor confirmará su recepción.</p>
+        <p class="muted">Si ya preparaste la aplicación en línea, puedes marcar. El registro se guardará en este dispositivo y se enviará cuando vuelva la conexión.</p>
     </section>
-    <section class="status-grid" aria-label="Estado de la aplicación">
-        <div class="status-card"><span>Conexión</span><strong id="connection-status" role="status">Sin conexión</strong></div>
-        <div class="status-card"><span>Marcas pendientes</span><strong id="pending-count" aria-live="polite">0</strong></div>
+    <section class="connection-strip" aria-label="Estado de conexión y sincronización">
+        <div class="connection-status" data-online="false"><span class="status-indicator" aria-hidden="true"></span><span class="status-label">Conexión</span><strong id="connection-status" role="status">Sin conexión</strong></div>
+        <div class="pending-status"><span>Marcas pendientes</span><strong id="pending-count" aria-live="polite">0</strong></div>
     </section>
-    <section class="last-event" aria-live="polite">
-        <div><p class="eyebrow">Última acción registrada en este dispositivo</p><strong id="last-action">Aún no hay marcas locales</strong><p id="last-action-time" class="muted">—</p></div>
+    <section class="card shift-card" aria-live="polite">
+        <div><p class="eyebrow">Última marcación en este dispositivo</p><h2 id="last-action">Aún no hay marcas locales</h2><p id="last-action-time" class="muted">—</p></div>
     </section>
-    <section class="card">
-        <h2>Registrar una acción</h2>
-        <div class="actions-grid">
-            <button class="button mark-button" type="button" data-attendance-action="ENTRY">Entrada</button>
-            <button class="button mark-button" type="button" data-attendance-action="BREAK_START">Inicio de colación</button>
-            <button class="button mark-button" type="button" data-attendance-action="BREAK_END">Fin de colación</button>
-            <button class="button mark-button" type="button" data-attendance-action="EXIT">Salida</button>
-        </div>
-        <p id="sync-message" class="notice" role="status">Para usar el modo sin conexión, inicia sesión y prepara la aplicación mientras tengas internet.</p>
+    <section class="card marking-card">
+        <p class="eyebrow">Registro</p>
+        <h2>Registrar una marcación</h2>
+        <p class="muted">Elige el tipo de marca que corresponda a lo ocurrido.</p>
+        <details class="marking-picker">
+            <summary class="button primary">Elegir tipo de marcación</summary>
+            <div class="actions-grid">
+                <button class="button secondary mark-button" type="button" data-attendance-action="ENTRY">Entrada</button>
+                <button class="button secondary mark-button" type="button" data-attendance-action="BREAK_START">Inicio de colación</button>
+                <button class="button secondary mark-button" type="button" data-attendance-action="BREAK_END">Fin de colación</button>
+                <button class="button secondary mark-button" type="button" data-attendance-action="EXIT">Salida</button>
+            </div>
+        </details>
+        <p id="sync-message" class="notice info" role="status">Para marcar sin conexión, inicia sesión y prepara la aplicación mientras tengas internet.</p>
     </section>
-    <section class="card"><h2>Marcas pendientes</h2><ul id="local-pending" class="event-list"></ul></section>
+    <section class="card"><p class="eyebrow">En este dispositivo</p><h2>Marcas pendientes</h2><ul id="local-pending" class="event-list"><li class="empty-state">No hay marcas pendientes.</li></ul></section>
 </main>
-<footer class="footer">Las marcas offline quedan en este dispositivo. No cierres los datos del navegador antes de confirmar la sincronización.</footer>
+<footer class="footer">Las marcas offline quedan en este dispositivo. No borres los datos del navegador antes de confirmar la sincronización.</footer>
 </body>
 </html>

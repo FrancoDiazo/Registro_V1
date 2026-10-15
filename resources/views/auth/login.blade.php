@@ -3,9 +3,9 @@
 @section('title', 'Iniciar sesión')
 
 @section('content')
-<section class="auth-card">
+<section class="auth-card" aria-labelledby="login-heading">
     <p class="eyebrow">Acceso seguro</p>
-    <h1>Iniciar sesión</h1>
+    <h1 id="login-heading">Iniciar sesión</h1>
     <p class="muted">Para preparar el uso temporal sin conexión, inicia sesión y abre la aplicación mientras tengas internet.</p>
     <form method="post" action="{{ route('login.store') }}" class="stack">
         @csrf

@@ -4,12 +4,12 @@
 
 @section('content')
 @php($eventLabels = ['ENTRY' => 'Entrada', 'BREAK_START' => 'Inicio de colación', 'BREAK_END' => 'Fin de colación', 'EXIT' => 'Salida'])
-<section class="welcome">
+<section class="welcome" aria-labelledby="event-heading">
     <p class="eyebrow">Marca original inmutable</p>
-    <h1>{{ $eventLabels[$event->event_type] }}</h1>
+    <h1 id="event-heading">{{ $eventLabels[$event->event_type] }}</h1>
     <p class="muted">Este registro original no se puede modificar ni eliminar.</p>
 </section>
-<section class="card">
+<section class="card" aria-label="Información de la marcación">
     <dl class="detail-list">
         <dt>Hora capturada en el dispositivo</dt><dd>{{ $event->occurred_at_device->timezone(config('attendance.presentation_timezone'))->format('d/m/Y H:i:s T') }}</dd>
         <dt>Offset capturado</dt><dd>{{ $event->device_offset_minutes }} minutos respecto de UTC</dd>
@@ -18,7 +18,7 @@
         <dt>Capturada sin conexión</dt><dd>{{ $event->offline ? 'Sí' : 'No' }}</dd>
         <dt>UUID del evento</dt><dd class="uuid">{{ $event->event_uuid }}</dd>
     </dl>
-    <h2>Solicitar revisión</h2>
+    <h2 id="request-review-heading">Solicitar revisión</h2>
     <form method="post" action="{{ route('corrections.store') }}" class="stack">
         @csrf
         <input type="hidden" name="attendance_event_id" value="{{ $event->id }}">

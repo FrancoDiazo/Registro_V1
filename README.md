@@ -67,6 +67,7 @@ Para probar la PWA desde otro dispositivo de la red, publica el servidor detrás
 
 ## Configuración y operación
 
+- El sistema visual aplicado y sus limitaciones de recursos están descritos en [docs/sistema-visual.md](docs/sistema-visual.md).
 - La aplicación y PostgreSQL trabajan con timestamps en `UTC` (`APP_TIMEZONE=UTC`); `APP_PRESENTATION_TIMEZONE=America/Santiago` define la zona horaria de presentación.
 - Las marcas guardan por separado el instante capturado por el dispositivo (normalizado a UTC), el offset numérico original validado, la zona IANA declarada y la recepción UTC del servidor. El reloj del teléfono no se considera infalible.
 - Evita rotar `APP_KEY` mientras haya eventos pendientes en dispositivos: la vinculación seudónima local se deriva de esa clave y tendría que renovarse después de iniciar sesión nuevamente.

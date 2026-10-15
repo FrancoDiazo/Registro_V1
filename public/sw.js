@@ -1,4 +1,4 @@
-const CACHE_NAME = 'asistencia-shell-v1';
+const CACHE_NAME = 'asistencia-shell-v2';
 const SHELL_URL = '/offline.html';
 const STATIC_URLS = [
     SHELL_URL,
