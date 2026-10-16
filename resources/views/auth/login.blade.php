@@ -15,6 +15,7 @@
         <input id="password" name="password" type="password" autocomplete="current-password" required>
         <label class="check-row"><input type="checkbox" name="remember" value="1"> Mantener sesión</label>
         <button class="button primary" type="submit">Entrar</button>
+        <a href="{{ route('password.request') }}">¿Olvidaste tu contraseña?</a>
     </form>
 </section>
 @endsection

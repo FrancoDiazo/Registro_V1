@@ -2,12 +2,18 @@
 
 namespace Tests\Feature;
 
+use App\Jobs\SendAttendanceConfirmation;
+use App\Mail\AttendanceConfirmationMail;
+use App\Models\AttendanceConfirmation;
 use App\Models\AttendanceEvent;
 use App\Models\AttendanceIncident;
 use App\Models\CorrectionRequest;
 use App\Models\Employee;
 use App\Models\User;
+use Carbon\CarbonImmutable;
 use Illuminate\Foundation\Testing\RefreshDatabase;
+use Illuminate\Support\Facades\Mail;
+use Illuminate\Support\Facades\Queue;
 use Tests\TestCase;
 
 class AttendanceSyncTest extends TestCase
@@ -40,8 +46,98 @@ class AttendanceSyncTest extends TestCase
         $this->actingAs($user)->postJson('/api/attendance/sync', ['events' => [$event]])
             ->assertOk()->assertJsonPath('results.0.status', 'already_received');
 
-        $this->assertDatabaseCount('attendance_events', 1);
-        $this->assertDatabaseHas('attendance_events', ['event_uuid' => $event['event_uuid'], 'employee_id' => $employee->id]);
+        $this->assertDatabaseCount('marcaciones_asistencia', 1);
+        $this->assertDatabaseHas('marcaciones_asistencia', ['event_uuid' => $event['event_uuid'], 'employee_id' => $employee->id]);
+    }
+
+    public function test_accepted_offline_mark_is_queued_then_emailed_to_the_verified_worker(): void
+    {
+        [$user, $employee] = $this->worker();
+        Mail::fake();
+        Queue::fake();
+        $event = $this->eventPayload($employee, 'BREAK_START');
+
+        $this->actingAs($user)->postJson('/api/attendance/sync', ['events' => [$event]])
+            ->assertOk()->assertJsonPath('results.0.status', 'accepted');
+
+        $confirmation = AttendanceConfirmation::firstOrFail();
+        Queue::assertPushedTimes(SendAttendanceConfirmation::class, 1);
+        Mail::assertNothingOutgoing();
+
+        (new SendAttendanceConfirmation($confirmation->id))->handle();
+
+        Mail::assertSent(AttendanceConfirmationMail::class, fn (AttendanceConfirmationMail $mail): bool =>
+            $mail->hasTo($user->email)
+            && $mail->eventType === 'Inicio de colación'
+            && $mail->wasOffline
+            && $mail->occurredAt === CarbonImmutable::parse($event['occurred_at_device'])
+                ->timezone(config('attendance.presentation_timezone'))
+                ->format('d/m/Y H:i:s T')
+            && str_contains($mail->render(), 'se guardó sin conexión')
+        );
+        $this->assertDatabaseHas('bandeja_salida_confirmaciones_asistencia', [
+            'id' => $confirmation->id,
+            'status' => 'sent',
+        ]);
+    }
+
+    public function test_replaying_an_accepted_event_does_not_create_or_send_a_second_confirmation(): void
+    {
+        [$user, $employee] = $this->worker();
+        Mail::fake();
+        Queue::fake();
+        $event = $this->eventPayload($employee, 'ENTRY');
+
+        $this->actingAs($user)->postJson('/api/attendance/sync', ['events' => [$event]])
+            ->assertOk()->assertJsonPath('results.0.status', 'accepted');
+        $this->actingAs($user)->postJson('/api/attendance/sync', ['events' => [$event]])
+            ->assertOk()->assertJsonPath('results.0.status', 'already_received');
+
+        $this->assertDatabaseCount('marcaciones_asistencia', 1);
+        $this->assertDatabaseCount('bandeja_salida_confirmaciones_asistencia', 1);
+        Queue::assertPushedTimes(SendAttendanceConfirmation::class, 1);
+
+        $confirmation = AttendanceConfirmation::firstOrFail();
+        (new SendAttendanceConfirmation($confirmation->id))->handle();
+        Mail::assertSentTimes(AttendanceConfirmationMail::class, 1);
+    }
+
+    public function test_unverified_worker_email_does_not_receive_a_mark_confirmation(): void
+    {
+        [$user, $employee] = $this->worker();
+        $user->forceFill(['email_verified_at' => null])->save();
+        Mail::fake();
+        Queue::fake();
+        $event = $this->eventPayload($employee, 'EXIT');
+
+        $this->actingAs($user)->postJson('/api/attendance/sync', ['events' => [$event]])
+            ->assertOk()->assertJsonPath('results.0.status', 'accepted');
+
+        $this->assertDatabaseCount('marcaciones_asistencia', 1);
+        $this->assertDatabaseCount('bandeja_salida_confirmaciones_asistencia', 0);
+        Queue::assertNothingPushed();
+        Mail::assertNothingOutgoing();
+    }
+
+    public function test_mail_failure_keeps_the_accepted_mark_and_confirmation_retry_state(): void
+    {
+        [$user, $employee] = $this->worker();
+        Queue::fake();
+        $event = $this->eventPayload($employee, 'EXIT');
+        $this->actingAs($user)->postJson('/api/attendance/sync', ['events' => [$event]])
+            ->assertOk()->assertJsonPath('results.0.status', 'accepted');
+        $confirmation = AttendanceConfirmation::firstOrFail();
+        Mail::shouldReceive('to')->once()->andThrow(new \RuntimeException('synthetic mail transport failure'));
+
+        (new SendAttendanceConfirmation($confirmation->id))->handle();
+
+        $this->assertDatabaseHas('marcaciones_asistencia', ['event_uuid' => $event['event_uuid']]);
+        $this->assertDatabaseHas('bandeja_salida_confirmaciones_asistencia', [
+            'id' => $confirmation->id,
+            'status' => 'pending',
+            'attempt_count' => 1,
+            'last_error' => 'No se pudo enviar el correo de confirmación.',
+        ]);
     }
 
     public function test_duplicate_events_in_one_batch_return_an_individual_confirmation_for_each_copy(): void
@@ -55,7 +151,7 @@ class AttendanceSyncTest extends TestCase
             ->assertJsonPath('results.0.status', 'accepted')
             ->assertJsonPath('results.1.status', 'already_received');
 
-        $this->assertDatabaseCount('attendance_events', 1);
+        $this->assertDatabaseCount('marcaciones_asistencia', 1);
     }
 
     public function test_duplicate_device_sequence_is_preserved_and_flagged_for_review(): void
@@ -71,9 +167,9 @@ class AttendanceSyncTest extends TestCase
             ->assertJsonPath('results.0.status', 'accepted')
             ->assertJsonPath('results.1.status', 'accepted');
 
-        $this->assertDatabaseCount('attendance_events', 2);
-        $this->assertDatabaseHas('attendance_events', ['event_uuid' => $first['event_uuid']]);
-        $this->assertDatabaseHas('attendance_incidents', [
+        $this->assertDatabaseCount('marcaciones_asistencia', 2);
+        $this->assertDatabaseHas('marcaciones_asistencia', ['event_uuid' => $first['event_uuid']]);
+        $this->assertDatabaseHas('incidencias_asistencia', [
             'attendance_event_id' => AttendanceEvent::where('event_uuid', $duplicateSequence['event_uuid'])->value('id'),
             'type' => 'duplicate_device_sequence',
         ]);
@@ -91,7 +187,7 @@ class AttendanceSyncTest extends TestCase
 
         $response->assertJsonPath('results.0.status', 'accepted')
             ->assertJsonPath('results.1.status', 'error');
-        $this->assertDatabaseCount('attendance_events', 1);
+        $this->assertDatabaseCount('marcaciones_asistencia', 1);
     }
 
     public function test_invalid_device_timestamp_without_an_offset_is_rejected(): void
@@ -102,7 +198,7 @@ class AttendanceSyncTest extends TestCase
 
         $this->actingAs($user)->postJson('/api/attendance/sync', ['events' => [$event]])
             ->assertOk()->assertJsonPath('results.0.status', 'error');
-        $this->assertDatabaseCount('attendance_events', 0);
+        $this->assertDatabaseCount('marcaciones_asistencia', 0);
     }
 
     public function test_server_stores_the_device_offset_separately_from_the_utc_instant(): void
@@ -133,8 +229,8 @@ class AttendanceSyncTest extends TestCase
             ->assertJsonPath('results.0.status', 'accepted')
             ->assertJsonPath('results.1.status', 'accepted');
 
-        $this->assertDatabaseCount('attendance_events', 2);
-        $this->assertDatabaseHas('attendance_incidents', [
+        $this->assertDatabaseCount('marcaciones_asistencia', 2);
+        $this->assertDatabaseHas('incidencias_asistencia', [
             'employee_id' => $employee->id,
             'type' => 'out_of_order',
             'status' => 'open',
@@ -152,8 +248,8 @@ class AttendanceSyncTest extends TestCase
             ->assertJsonPath('results.0.status', 'accepted')
             ->assertJsonPath('results.1.status', 'accepted');
 
-        $this->assertDatabaseCount('attendance_events', 2);
-        $this->assertDatabaseHas('attendance_incidents', [
+        $this->assertDatabaseCount('marcaciones_asistencia', 2);
+        $this->assertDatabaseHas('incidencias_asistencia', [
             'attendance_event_id' => AttendanceEvent::where('event_uuid', $breakEnd['event_uuid'])->value('id'),
             'type' => 'sequence_anomaly',
         ]);
@@ -167,8 +263,8 @@ class AttendanceSyncTest extends TestCase
         $this->actingAs($user)->postJson('/api/attendance/sync', ['events' => [$exit]])
             ->assertOk()->assertJsonPath('results.0.status', 'accepted');
 
-        $this->assertDatabaseCount('attendance_events', 1);
-        $this->assertDatabaseHas('attendance_incidents', [
+        $this->assertDatabaseCount('marcaciones_asistencia', 1);
+        $this->assertDatabaseHas('incidencias_asistencia', [
             'employee_id' => $employee->id,
             'attendance_event_id' => AttendanceEvent::where('event_uuid', $exit['event_uuid'])->value('id'),
             'type' => 'sequence_anomaly',
@@ -183,8 +279,8 @@ class AttendanceSyncTest extends TestCase
         $this->actingAs($user)->postJson('/api/attendance/sync', ['events' => [$event]])
             ->assertOk()->assertJsonPath('results.0.status', 'accepted');
 
-        $this->assertDatabaseHas('attendance_events', ['event_uuid' => $event['event_uuid'], 'offline' => true]);
-        $this->assertDatabaseHas('attendance_incidents', [
+        $this->assertDatabaseHas('marcaciones_asistencia', ['event_uuid' => $event['event_uuid'], 'offline' => true]);
+        $this->assertDatabaseHas('incidencias_asistencia', [
             'attendance_event_id' => AttendanceEvent::where('event_uuid', $event['event_uuid'])->value('id'),
             'type' => 'offline_sync_delay',
         ]);
@@ -222,7 +318,7 @@ class AttendanceSyncTest extends TestCase
             'requested_timezone' => 'America/Santiago',
         ])->assertRedirect();
 
-        $this->assertDatabaseCount('correction_requests', 1);
+        $this->assertDatabaseCount('solicitudes_correccion', 1);
         $correction = CorrectionRequest::firstOrFail();
         $this->assertSame($user->id, $correction->requested_by);
         $this->assertSame('pending', $correction->status);
@@ -233,12 +329,12 @@ class AttendanceSyncTest extends TestCase
             'resolution_note' => 'Revisada con la información disponible.',
         ])->assertRedirect();
 
-        $this->assertDatabaseHas('correction_requests', [
+        $this->assertDatabaseHas('solicitudes_correccion', [
             'id' => $correction->id,
             'status' => 'approved',
             'resolved_by' => $administrator->id,
         ]);
-        $this->assertDatabaseHas('audit_logs', [
+        $this->assertDatabaseHas('registros_auditoria', [
             'user_id' => $administrator->id,
             'action' => 'correction.resolved',
             'subject_id' => $correction->id,
@@ -268,7 +364,7 @@ class AttendanceSyncTest extends TestCase
             $this->assertSame('Las marcas originales no se pueden eliminar.', $exception->getMessage());
         }
 
-        $this->assertDatabaseHas('attendance_events', ['id' => $event->id, 'event_type' => 'ENTRY']);
+        $this->assertDatabaseHas('marcaciones_asistencia', ['id' => $event->id, 'event_type' => 'ENTRY']);
     }
 
     public function test_worker_cannot_request_a_correction_for_another_employee(): void

@@ -19,7 +19,7 @@ class CorrectionRequestController extends Controller
             'attendance_event_id' => [
                 'nullable',
                 'integer',
-                Rule::exists('attendance_events', 'id')->where('employee_id', $employee->id),
+                Rule::exists('marcaciones_asistencia', 'id')->where('employee_id', $employee->id),
             ],
             'reason' => ['required', 'string', 'min:10', 'max:2000'],
             'requested_event_type' => ['nullable', Rule::in(config('attendance.allowed_event_types'))],

@@ -16,4 +16,6 @@ return Application::configure(basePath: dirname(__DIR__))
             'administrator' => EnsureAdministrator::class,
             'worker' => EnsureWorker::class,
         ]);
-    })->create();
+    })
+    ->withExceptions()
+    ->create();

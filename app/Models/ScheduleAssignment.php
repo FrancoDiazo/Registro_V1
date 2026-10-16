@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class ScheduleAssignment extends Model
 {
+    protected $table = 'asignaciones_jornada';
+
     protected $fillable = ['employee_id', 'work_schedule_id', 'valid_from', 'valid_until'];
 
     protected function casts(): array

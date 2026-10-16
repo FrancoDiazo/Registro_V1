@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class CorrectionRequest extends Model
 {
+    protected $table = 'solicitudes_correccion';
+
     protected $fillable = [
         'employee_id',
         'attendance_event_id',

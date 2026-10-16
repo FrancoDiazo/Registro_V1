@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\HasMany;
 
 class WorkSchedule extends Model
 {
+    protected $table = 'jornadas_laborales';
+
     protected $fillable = [
         'name',
         'timezone',

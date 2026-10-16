@@ -4,12 +4,32 @@ namespace Tests\Feature;
 
 use App\Models\Employee;
 use App\Models\User;
+use Illuminate\Contracts\Debug\ExceptionHandler;
 use Illuminate\Foundation\Testing\RefreshDatabase;
 use Tests\TestCase;
 
 class AuthorizationTest extends TestCase
 {
     use RefreshDatabase;
+
+    public function test_application_registers_exception_handler_and_renders_login(): void
+    {
+        $this->assertInstanceOf(ExceptionHandler::class, app(ExceptionHandler::class));
+        $this->get('/login')->assertOk();
+        $this->get('/missing-page')->assertNotFound();
+    }
+
+    public function test_root_redirects_guests_to_login_and_signed_in_users_to_their_dashboard(): void
+    {
+        $this->get('/')->assertRedirect('/login');
+
+        $worker = User::factory()->create();
+        Employee::factory()->create(['user_id' => $worker->id]);
+        $this->actingAs($worker)->get('/')->assertRedirect('/dashboard');
+
+        $administrator = User::factory()->administrator()->create();
+        $this->actingAs($administrator)->get('/')->assertRedirect('/admin');
+    }
 
     public function test_workers_are_forbidden_from_administration_and_administrators_are_allowed(): void
     {

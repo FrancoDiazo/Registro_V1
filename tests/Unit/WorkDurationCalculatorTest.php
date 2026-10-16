@@ -10,7 +10,7 @@ use App\Models\WorkSchedule;
 use App\Services\AttendanceSummaryService;
 use App\Services\WorkDurationCalculator;
 use Carbon\CarbonImmutable;
-use PHPUnit\Framework\TestCase;
+use Tests\TestCase;
 
 class WorkDurationCalculatorTest extends TestCase
 {

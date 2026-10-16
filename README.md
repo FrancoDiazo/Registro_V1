@@ -32,13 +32,19 @@ La aplicación estará disponible en `http://localhost:8000`. El contenedor espe
 docker compose exec app php artisan attendance:make-administrator
 ```
 
-Los comandos interactivos de Artisan, Composer y las pruebas PHP se ejecutan dentro del contenedor de aplicación:
+Los comandos interactivos de Artisan, Composer y las pruebas PHP se ejecutan dentro del contenedor de aplicación. Compose también inicia un worker persistente de la cola de correos:
 
 ```powershell
 docker compose exec app php artisan migrate:status
-docker compose exec app composer test
+docker compose --profile test run --rm php-tests
+docker compose --profile test run --rm php-postgres-tests
 docker compose --profile test run --rm node-tests
+docker compose logs --tail 80 queue
+docker compose restart queue
+docker compose exec app php artisan attendance:retry-confirmations
 ```
+
+El esquema PostgreSQL usa nombres de tablas en español. Las instrucciones para la transición segura de una base existente, el renombrado especial del historial de migraciones, respaldo, validación y reversión están en [docs/renombrado-esquema.md](docs/renombrado-esquema.md). El contenedor bloquea el arranque/migración automática si detecta el historial antiguo para evitar crear un historial paralelo.
 
 `docker compose down` detiene los servicios y conserva los datos de PostgreSQL. **`docker compose down --volumes` elimina el volumen de base de datos y sus datos**; úsalo solo si quieres borrar deliberadamente la base local. Esta configuración utiliza el servidor integrado de Artisan y está pensada para desarrollo local, no para exponer directamente a internet. Para producción se requiere, entre otras cosas, un servidor web/proxy con HTTPS, secretos seguros, configuración endurecida y una estrategia de despliegue/respaldos.
 
@@ -67,6 +73,8 @@ Para probar la PWA desde otro dispositivo de la red, publica el servidor detrás
 
 ## Configuración y operación
 
+- El manual para trabajadores y administradores está en [docs/manual-uso.md](docs/manual-uso.md); incluye el alcance implementado, el procedimiento offline y las limitaciones funcionales.
+- La recuperación de contraseña y la configuración de SMTP/cola se documentan en [docs/correo-y-recuperacion.md](docs/correo-y-recuperacion.md).
 - El sistema visual aplicado y sus limitaciones de recursos están descritos en [docs/sistema-visual.md](docs/sistema-visual.md).
 - La aplicación y PostgreSQL trabajan con timestamps en `UTC` (`APP_TIMEZONE=UTC`); `APP_PRESENTATION_TIMEZONE=America/Santiago` define la zona horaria de presentación.
 - Las marcas guardan por separado el instante capturado por el dispositivo (normalizado a UTC), el offset numérico original validado, la zona IANA declarada y la recepción UTC del servidor. El reloj del teléfono no se considera infalible.
@@ -106,3 +114,4 @@ Las pruebas PHP usan SQLite en memoria y son complementarias a ejecutar migracio
 - La vista CSV lista marcas recibidas y sus incidencias; no determina cumplimiento normativo, horas extraordinarias, pagos ni cierre de períodos.
 - La bandeja resume turnos completos por fecha local de entrada (semana ISO como agrupación técnica); las marcas offline que todavía no llegaron al servidor no pueden aparecer en un reporte. Todo resultado se presenta como provisional.
 - La cuenta del primer administrador se provisiona interactivamente; no existe una contraseña predeterminada ni un usuario sembrado.
+- Las confirmaciones de marcación se envían únicamente a correos verificados. Si falla el transporte, la marca persiste y la confirmación queda en la outbox para reintento; configurar SMTP y el worker según la guía de correo.

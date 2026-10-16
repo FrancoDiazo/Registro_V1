@@ -3,7 +3,9 @@
 namespace App\Http\Controllers;
 
 use App\Models\AttendanceEvent;
+use App\Models\AttendanceConfirmation;
 use App\Models\AttendanceIncident;
+use App\Jobs\SendAttendanceConfirmation;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\JsonResponse;
 use Illuminate\Http\Request;
@@ -80,6 +82,10 @@ class SyncAttendanceController extends Controller
             $sameOwner = AttendanceEvent::where('event_uuid', $data['event_uuid'])
                 ->where('employee_id', $employeeId)
                 ->exists();
+            if ($sameOwner) {
+                $stored = AttendanceEvent::where('event_uuid', $data['event_uuid'])->firstOrFail();
+                $this->dispatchPendingConfirmation($stored->id, $employeeId);
+            }
 
             return [
                 'index' => $index,
@@ -92,10 +98,10 @@ class SyncAttendanceController extends Controller
         $occurredAt = CarbonImmutable::parse($data['occurred_at_device'])->utc();
         $receivedAt = CarbonImmutable::now('UTC');
 
-        $savedEventId = DB::transaction(function () use ($employeeId, $data, $occurredAt, $receivedAt): ?int {
-            DB::table('employees')->where('id', $employeeId)->lockForUpdate()->first();
+        $savedEvent = DB::transaction(function () use ($employeeId, $data, $occurredAt, $receivedAt): ?array {
+            DB::table('trabajadores')->where('id', $employeeId)->lockForUpdate()->first();
 
-            $inserted = DB::table('attendance_events')->insertOrIgnore([
+            $inserted = DB::table('marcaciones_asistencia')->insertOrIgnore([
                 'event_uuid' => $data['event_uuid'],
                 'employee_id' => $employeeId,
                 'event_type' => $data['event_type'],
@@ -115,14 +121,23 @@ class SyncAttendanceController extends Controller
 
             $savedEvent = AttendanceEvent::where('event_uuid', $data['event_uuid'])->firstOrFail();
             $this->recordIncidents($savedEvent, $occurredAt, $receivedAt);
+            $user = $savedEvent->employee->user;
+            $confirmation = $user->email_verified_at
+                ? AttendanceConfirmation::create(['attendance_event_id' => $savedEvent->id])
+                : null;
 
-            return $savedEvent->id;
+            return [
+                'event_id' => $savedEvent->id,
+                'confirmation_id' => $confirmation?->id,
+            ];
         });
 
-        if ($savedEventId === null) {
+        if ($savedEvent === null) {
             $stored = AttendanceEvent::where('event_uuid', $data['event_uuid'])->first();
 
             if ($stored?->employee_id === $employeeId) {
+                $this->dispatchPendingConfirmation($stored->id, $employeeId);
+
                 return ['index' => $index, 'event_uuid' => $data['event_uuid'], 'status' => 'already_received'];
             }
 
@@ -134,7 +149,31 @@ class SyncAttendanceController extends Controller
             ];
         }
 
+        if ($savedEvent['confirmation_id']) {
+            SendAttendanceConfirmation::dispatch($savedEvent['confirmation_id']);
+        }
+
         return ['index' => $index, 'event_uuid' => $data['event_uuid'], 'status' => 'accepted'];
+    }
+
+    private function dispatchPendingConfirmation(int $eventId, int $employeeId): void
+    {
+        $event = AttendanceEvent::with('employee.user')
+            ->whereKey($eventId)
+            ->where('employee_id', $employeeId)
+            ->first();
+        $user = $event?->employee?->user;
+        if (! $event || ! $user?->email_verified_at || ! filter_var($user->email, FILTER_VALIDATE_EMAIL)) {
+            return;
+        }
+
+        $confirmation = AttendanceConfirmation::firstOrCreate(
+            ['attendance_event_id' => $event->id],
+            ['status' => 'pending'],
+        );
+        if ($confirmation->status === 'pending') {
+            SendAttendanceConfirmation::dispatch($confirmation->id);
+        }
     }
 
     private function recordIncidents(AttendanceEvent $event, CarbonImmutable $occurredAt, CarbonImmutable $receivedAt): void

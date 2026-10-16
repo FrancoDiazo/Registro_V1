@@ -25,7 +25,7 @@ class AdminController extends Controller
     public function index(Request $request, AttendanceSummaryService $summaryService): View|RedirectResponse
     {
         $filters = $request->validate([
-            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'employee_id' => ['nullable', 'integer', 'exists:trabajadores,id'],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
         ]);
@@ -96,8 +96,8 @@ class AdminController extends Controller
     {
         $data = $request->validate([
             'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'email', 'max:255', 'unique:users,email'],
-            'employee_number' => ['required', 'string', 'max:64', 'unique:employees,employee_number'],
+            'email' => ['required', 'email', 'max:255', 'unique:usuarios,email'],
+            'employee_number' => ['required', 'string', 'max:64', 'unique:trabajadores,employee_number'],
             'password' => ['required', 'string', 'min:12', 'max:255'],
         ]);
 
@@ -161,8 +161,8 @@ class AdminController extends Controller
     public function assignSchedule(Request $request): RedirectResponse
     {
         $data = $request->validate([
-            'employee_id' => ['required', 'integer', 'exists:employees,id'],
-            'work_schedule_id' => ['required', 'integer', Rule::exists('work_schedules', 'id')->where('is_active', true)],
+            'employee_id' => ['required', 'integer', 'exists:trabajadores,id'],
+            'work_schedule_id' => ['required', 'integer', Rule::exists('jornadas_laborales', 'id')->where('is_active', true)],
             'valid_from' => ['required', 'date'],
             'valid_until' => ['nullable', 'date', 'after_or_equal:valid_from'],
         ]);
@@ -225,7 +225,7 @@ class AdminController extends Controller
     public function export(Request $request): StreamedResponse
     {
         $filters = $request->validate([
-            'employee_id' => ['nullable', 'integer', 'exists:employees,id'],
+            'employee_id' => ['nullable', 'integer', 'exists:trabajadores,id'],
             'from' => ['nullable', 'date'],
             'to' => ['nullable', 'date', 'after_or_equal:from'],
         ]);

@@ -9,6 +9,8 @@ use LogicException;
 
 class AttendanceEvent extends Model
 {
+    protected $table = 'marcaciones_asistencia';
+
     protected $fillable = [
         'event_uuid',
         'employee_id',

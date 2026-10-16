@@ -7,6 +7,8 @@ use Illuminate\Database\Eloquent\Relations\BelongsTo;
 
 class AttendanceIncident extends Model
 {
+    protected $table = 'incidencias_asistencia';
+
     protected $fillable = [
         'employee_id',
         'attendance_event_id',

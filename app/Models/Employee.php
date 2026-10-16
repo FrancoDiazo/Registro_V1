@@ -11,6 +11,8 @@ class Employee extends Model
 {
     use HasFactory;
 
+    protected $table = 'trabajadores';
+
     protected $fillable = ['user_id', 'employee_number', 'status'];
 
     public function user(): BelongsTo

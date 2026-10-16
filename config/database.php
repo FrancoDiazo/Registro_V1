@@ -32,7 +32,7 @@ return [
         ],
     ],
     'migrations' => [
-        'table' => 'migrations',
+        'table' => 'migraciones',
         'update_date_on_publish' => true,
     ],
     'redis' => [
