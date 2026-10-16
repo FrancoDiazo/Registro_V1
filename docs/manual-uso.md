@@ -10,6 +10,8 @@ El sistema conserva las marcas originales. Una solicitud de corrección se regis
 
 La forma recomendada de ejecutar la aplicación es con Docker Desktop y Docker Compose v2. No es necesario instalar PHP, Composer ni PostgreSQL en Windows.
 
+La estructura de tablas, columnas, claves foráneas y secuencias está descrita en [estructura-base-datos.md](./estructura-base-datos.md).
+
 1. Abre PowerShell y entra a la carpeta del proyecto:
 
    ```powershell
@@ -53,7 +55,18 @@ docker compose exec app php artisan attendance:make-administrator
 
 El comando solicita nombre, correo y contraseña de al menos 12 caracteres. La contraseña no se imprime en pantalla. Inicia sesión en `http://localhost:8000/login` con ese correo y contraseña.
 
-La primera cuenta administradora también puede crearse antes de levantar el stack, usando `docker compose run --rm --no-deps app php artisan attendance:make-administrator`, siempre que la base de datos esté disponible y las migraciones ya se hayan ejecutado.
+Este comando crea una cuenta con rol `administrator`; no crea un perfil de trabajador. Solo úsalo si el correo no está registrado. Si los contenedores aún no están iniciados, puedes crearla con `docker compose run --rm --no-deps app php artisan attendance:make-administrator`, siempre que PostgreSQL esté disponible y las migraciones ya se hayan ejecutado.
+
+### Crear una cuenta de trabajador
+
+Las cuentas de trabajador se crean desde el panel, no mediante un comando Artisan:
+
+1. Inicia sesión con una cuenta administradora.
+2. Abre el panel de administración y el formulario de creación de trabajadores.
+3. Completa nombre, correo, identificador laboral y contraseña inicial.
+4. Entrega la contraseña inicial al trabajador por un canal seguro. No la envíes por este repositorio ni la compartas en logs o capturas.
+
+El panel crea el usuario con rol `worker` y su perfil laboral asociado. No insertes cuentas manualmente en PostgreSQL. No hay un comando incluido para crear trabajadores.
 
 ## 4. Inicio y cierre de sesión
 
@@ -62,7 +75,7 @@ La primera cuenta administradora también puede crearse antes de levantar el sta
 3. El administrador llega al panel de administración; el trabajador, a su pantalla de marcación.
 4. Para cerrar sesión, abre **Mi cuenta** y pulsa **Cerrar sesión**.
 
-El MVP permite recuperar una contraseña desde **¿Olvidaste tu contraseña?** si la cuenta tiene un correo verificado asociado. No ofrece cambio de contraseña desde una sesión activa ni autenticación multifactor. Si la cuenta no tiene correo verificado, administración debe resolverlo según el procedimiento corporativo documentado en [correo-y-recuperacion.md](./correo-y-recuperacion.md).
+El MVP permite recuperar una contraseña desde **¿Olvidaste tu contraseña?** si la cuenta tiene un correo verificado asociado. No ofrece cambio de contraseña desde una sesión activa ni autenticación multifactor. Para actualizar administrativamente la clave de una cuenta administradora, ejecuta `docker compose exec app php artisan attendance:change-administrator-password`; el comando solicita el correo y la nueva clave de forma interactiva, sin imprimir la clave ni guardarla en texto plano. No cierra sesiones web que ya estaban iniciadas. Si la cuenta no tiene correo verificado, administración debe resolverlo según el procedimiento corporativo documentado en [correo-y-recuperacion.md](./correo-y-recuperacion.md).
 
 ## 5. Uso del trabajador
 
@@ -125,7 +138,7 @@ El panel es accesible solo a cuentas administradoras activas. En escritorio ofre
 - Crea un trabajador con nombre, correo, identificador laboral único y contraseña inicial de al menos 12 caracteres.
 - Comparte la contraseña inicial por un canal seguro.
 - Consulta el listado y cambia el estado entre activo e inactivo. Al desactivarlo, también se desactiva la cuenta de acceso.
-- No existe edición general del perfil, restablecimiento de contraseña ni gestión de cuentas administradoras desde este panel.
+- No existe edición general del perfil ni gestión de cuentas administradoras desde este panel.
 
 ### Jornadas y asignaciones
 
@@ -154,7 +167,7 @@ Los informes son **provisionales**. Las marcas offline todavía no recibidas no 
 
 | Área | Disponible |
 |---|---|
-| Acceso | Inicio y cierre de sesión; roles de trabajador y administrador; altas de trabajadores; activación y desactivación. |
+| Acceso | Inicio y cierre de sesión; roles de trabajador y administrador; recuperación de contraseña por correo verificado; alta interactiva del primer administrador; altas de trabajadores desde el panel; activación y desactivación. |
 | Marcación | Entrada, inicio y fin de colación, y salida; registro de hora del dispositivo y recepción del servidor por separado. |
 | Offline/PWA | Recursos básicos preparados por service worker; cola IndexedDB; indicador de conectividad y pendientes; reintentos al abrir y al recuperar conectividad; sincronización manual; lotes idempotentes y confirmación individual. |
 | Revisión | Conservación de eventos anómalos; incidencias por diferencias de reloj, demora offline, secuencia duplicada, orden incorrecto y anomalías; solicitudes de corrección auditables. |
@@ -163,10 +176,11 @@ Los informes son **provisionales**. Las marcas offline todavía no recibidas no 
 | Cálculos técnicos | Intervalos observados, colación configurada, turnos que cruzan medianoche, agrupación diaria/semanal provisional y alertas de discrepancias de horario. |
 | Seguridad y privacidad | Acceso por rol, validación del servidor, protección CSRF, limitación de solicitudes sensibles, consultas personales restringidas, eventos originales no editables desde la aplicación y sin GPS ni biometría. |
 | Interfaz | Blade responsive en español, navegación móvil, soporte de teclado y estados explícitos de conectividad y sincronización. |
+| Correo | Confirmaciones de marcas procesadas por cola; guía de configuración SMTP y recuperación de contraseña. |
 
 ## 8. Funciones no disponibles y límites
 
-- No hay recuperación/cambio de contraseña en pantalla, MFA, restablecimiento por correo ni administración de otros administradores.
+- La recuperación por correo está disponible para cuentas con correo verificado. No hay cambio de contraseña desde una sesión activa, MFA ni administración de otras cuentas administradoras desde el panel.
 - No se sugieren automáticamente las marcas ni se valida/bloquea en pantalla la secuencia laboral.
 - No hay resumen diario de horas para el trabajador.
 - No se editan ni eliminan marcas originales, trabajadores, jornadas o asignaciones desde el panel.
@@ -203,7 +217,7 @@ Abre `http://localhost:8000/login` cuando `app` esté activo y la base `db` figu
 
 - Si todavía no creaste un administrador, usa el comando de la sección 3.
 - Comprueba que usas el correo y contraseña asignados; no hay credenciales por defecto.
-- La contraseña no se puede recuperar desde la interfaz.
+- Para una cuenta con correo verificado, usa **¿Olvidaste tu contraseña?** en `/login`. Para crear el primer administrador, ejecuta el comando de la sección 3.
 
 ### Las marcas siguen pendientes
 

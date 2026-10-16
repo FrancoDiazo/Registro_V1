@@ -42,6 +42,49 @@ Artisan::command('attendance:make-administrator', function (): int {
     return self::SUCCESS;
 })->purpose('Crear la primera cuenta administradora de forma interactiva');
 
+Artisan::command('attendance:change-administrator-password', function (): int {
+    $email = mb_strtolower(trim((string) $this->ask('Correo de la cuenta administradora')));
+    $password = (string) $this->secret('Nueva contraseña (mínimo 12 caracteres)');
+    $passwordConfirmation = (string) $this->secret('Confirma la nueva contraseña');
+
+    $validator = Validator::make([
+        'email' => $email,
+        'password' => $password,
+        'password_confirmation' => $passwordConfirmation,
+    ], [
+        'email' => ['required', 'email', 'max:255'],
+        'password' => ['required', 'string', 'min:12', 'max:255', 'confirmed'],
+    ]);
+
+    if ($validator->fails()) {
+        foreach ($validator->errors()->all() as $error) {
+            $this->error($error);
+        }
+
+        return self::FAILURE;
+    }
+
+    $administrator = User::query()
+        ->whereRaw('LOWER(email) = ?', [$email])
+        ->where('role', 'administrator')
+        ->first();
+
+    if (! $administrator) {
+        $this->error('No se encontró una cuenta administradora con ese correo.');
+
+        return self::FAILURE;
+    }
+
+    $administrator->forceFill([
+        'password' => Hash::make($password),
+        'remember_token' => null,
+    ])->save();
+
+    $this->info('Contraseña actualizada. Las sesiones ya iniciadas no se cerraron automáticamente.');
+
+    return self::SUCCESS;
+})->purpose('Actualizar de forma interactiva la contraseña de una cuenta administradora');
+
 Artisan::command('attendance:retry-confirmations', function (): int {
     $confirmations = AttendanceConfirmation::with('attendanceEvent.employee.user')
         ->whereIn('status', ['pending', 'failed'])

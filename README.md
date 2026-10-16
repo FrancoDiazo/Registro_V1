@@ -26,7 +26,7 @@ docker compose up --build -d
 docker compose ps
 ```
 
-La aplicación estará disponible en `http://localhost:8000`. El contenedor espera a que PostgreSQL esté listo y ejecuta `php artisan migrate --force` al arrancar. Para crear el primer administrador:
+La aplicación estará disponible en `http://localhost:8000`. El contenedor espera a que PostgreSQL esté listo, verifica el historial de migraciones y aplica migraciones pendientes al arrancar. Para crear el primer administrador:
 
 ```powershell
 docker compose exec app php artisan attendance:make-administrator
@@ -67,13 +67,16 @@ composer test
 php artisan serve
 ```
 
-El comando de administración solicita nombre, correo y contraseña sin almacenarla en el repositorio. Los empleados se crean desde el panel administrativo. La contraseña inicial debe comunicarse de forma segura y cambiarse según la política de la organización.
+El comando solicita nombre, correo y contraseña de forma interactiva. En Docker, usa `docker compose exec app php artisan attendance:make-administrator`; sin Docker, ejecuta `php artisan attendance:make-administrator`. La contraseña no se imprime ni se guarda en el repositorio. Las cuentas de trabajador se crean desde el panel administrativo; no existe un comando Artisan para crearlas.
+
+La estructura de tablas, columnas y relaciones está documentada en [docs/estructura-base-datos.md](docs/estructura-base-datos.md). La guía de operación del esquema y sus secuencias está en [docs/renombrado-esquema.md](docs/renombrado-esquema.md).
 
 Para probar la PWA desde otro dispositivo de la red, publica el servidor detrás de un proxy HTTPS de desarrollo o de una URL HTTPS confiable; exponer `artisan serve` por HTTP en una IP local no habilita service workers en la mayoría de los navegadores.
 
 ## Configuración y operación
 
 - El manual para trabajadores y administradores está en [docs/manual-uso.md](docs/manual-uso.md); incluye el alcance implementado, el procedimiento offline y las limitaciones funcionales.
+- La estructura actual de la base PostgreSQL, incluidas tablas de negocio e internas de Laravel, está en [docs/estructura-base-datos.md](docs/estructura-base-datos.md).
 - La recuperación de contraseña y la configuración de SMTP/cola se documentan en [docs/correo-y-recuperacion.md](docs/correo-y-recuperacion.md).
 - El sistema visual aplicado y sus limitaciones de recursos están descritos en [docs/sistema-visual.md](docs/sistema-visual.md).
 - La aplicación y PostgreSQL trabajan con timestamps en `UTC` (`APP_TIMEZONE=UTC`); `APP_PRESENTATION_TIMEZONE=America/Santiago` define la zona horaria de presentación.
