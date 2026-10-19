@@ -9,13 +9,13 @@
     --color-brand: #D50032;
     --color-brand-hover: #A90028;
     --color-brand-soft: #FCE8ED;
-    --color-text: #606060;
-    --color-heading: #343434;
-    --color-subtle: #777777;
-    --color-background: #F1F1F1;
+    --color-text: #4B5563;
+    --color-heading: #20242B;
+    --color-subtle: #667085;
+    --color-background: #F5F6F8;
     --color-surface: #FFFFFF;
-    --color-border: #D5D5D5;
-    --color-border-strong: #777777;
+    --color-border: #E2E5E9;
+    --color-border-strong: #7B8491;
     --color-focus: #252525;
     --color-success: #245C36;
     --color-success-soft: #EAF4EC;
@@ -31,9 +31,9 @@
     --space-6: 1.5rem;
     --space-8: 2rem;
     --space-10: 2.5rem;
-    --radius-control: 4px;
-    --radius-card: 6px;
-    --shadow-card: 0 1px 3px rgb(0 0 0 / 5%);
+    --radius-control: 8px;
+    --radius-card: 12px;
+    --shadow-card: 0 3px 12px rgb(24 32 45 / 6%);
     --control-height: 48px;
     --focus-ring: 3px solid var(--color-focus);
     --content-width: 1120px;
@@ -145,7 +145,10 @@ input, select, textarea {
     border-radius: var(--radius-control);
     color: var(--color-heading);
     background: var(--color-surface);
+    transition: border-color 140ms ease, box-shadow 140ms ease;
 }
+input:hover, select:hover, textarea:hover { border-color: var(--color-subtle); }
+input:focus, select:focus, textarea:focus { border-color: var(--color-brand); box-shadow: 0 0 0 3px var(--color-brand-soft); outline: 0; }
 textarea { min-height: 104px; resize: vertical; }
 input[type="checkbox"] { width: 22px; min-height: 22px; accent-color: var(--color-brand); }
 .check-row { display: flex !important; align-items: center; gap: var(--space-2); font-weight: 500 !important; }

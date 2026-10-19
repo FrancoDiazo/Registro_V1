@@ -6,6 +6,10 @@ use Illuminate\Support\Facades\Validator;
 use App\Models\User;
 use App\Models\AttendanceConfirmation;
 use App\Jobs\SendAttendanceConfirmation;
+use App\Rules\ValidChileanRut;
+use App\Support\ChileanRut;
+use App\Support\RutConflict;
+use App\Support\UserRutBackfill;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Schema;
 
@@ -16,10 +20,23 @@ Artisan::command('about', function (): void {
 Artisan::command('attendance:make-administrator', function (): int {
     $name = $this->ask('Nombre de la persona administradora');
     $email = strtolower((string) $this->ask('Correo electrónico'));
+    $rut = ChileanRut::normalize((string) $this->ask('RUT de la persona administradora'));
     $password = (string) $this->secret('Contraseña (mínimo 12 caracteres)');
-    $validator = Validator::make(compact('name', 'email', 'password'), [
+    $validator = Validator::make(compact('name', 'email', 'rut', 'password'), [
         'name' => ['required', 'string', 'max:255'],
         'email' => ['required', 'email', 'max:255', 'unique:usuarios,email'],
+        'rut' => [
+            'required',
+            'string',
+            'max:12',
+            new ValidChileanRut(),
+            'unique:usuarios,rut',
+            function (string $attribute, mixed $value, \Closure $fail): void {
+                if (is_string($value) && (new UserRutBackfill())->rutBelongsToAnotherEmployee($value)) {
+                    $fail('Este RUT ya está asociado a un trabajador.');
+                }
+            },
+        ],
         'password' => ['required', 'string', 'min:12', 'max:255'],
     ]);
 
@@ -31,16 +48,94 @@ Artisan::command('attendance:make-administrator', function (): int {
         return self::FAILURE;
     }
 
-    User::create([
-        'name' => $name,
-        'email' => $email,
-        'password' => Hash::make($password),
-        'role' => 'administrator',
-    ]);
+    try {
+        User::create([
+            'name' => $name,
+            'email' => $email,
+            'rut' => $rut,
+            'password' => Hash::make($password),
+            'role' => 'administrator',
+        ]);
+    } catch (\Illuminate\Database\QueryException $exception) {
+        if (! RutConflict::isUniqueViolation($exception)) {
+            throw $exception;
+        }
+
+        $this->error('Este RUT ya está asociado a otra cuenta.');
+
+        return self::FAILURE;
+    }
     $this->info('Cuenta administradora creada.');
 
     return self::SUCCESS;
-})->purpose('Crear la primera cuenta administradora de forma interactiva');
+})->purpose('Crear una cuenta administradora con acceso por RUT');
+
+Artisan::command('attendance:assign-administrator-rut', function (): int {
+    $email = mb_strtolower(trim((string) $this->ask('Correo de la cuenta administradora')));
+    $administrator = User::query()
+        ->whereRaw('LOWER(email) = ?', [$email])
+        ->where('role', 'administrator')
+        ->first();
+
+    if (! $administrator) {
+        $this->error('No se encontró una cuenta administradora con ese correo.');
+
+        return self::FAILURE;
+    }
+
+    $rut = ChileanRut::normalize((string) $this->ask('RUT de la persona administradora'));
+    $validator = Validator::make(['rut' => $rut], [
+        'rut' => [
+            'required',
+            'string',
+            'max:12',
+            new ValidChileanRut(),
+            'unique:usuarios,rut,'.$administrator->id,
+            function (string $attribute, mixed $value, \Closure $fail) use ($administrator): void {
+                if (is_string($value) && (new UserRutBackfill())->rutBelongsToAnotherEmployee($value, $administrator->id)) {
+                    $fail('Este RUT ya está asociado a otro trabajador.');
+                }
+            },
+        ],
+    ]);
+
+    if ($validator->fails()) {
+        foreach ($validator->errors()->all() as $error) {
+            $this->error($error);
+        }
+
+        return self::FAILURE;
+    }
+
+    try {
+        $administrator->forceFill(['rut' => $rut])->save();
+    } catch (\Illuminate\Database\QueryException $exception) {
+        if (! RutConflict::isUniqueViolation($exception)) {
+            throw $exception;
+        }
+
+        $this->error('Este RUT ya está asociado a otra cuenta.');
+
+        return self::FAILURE;
+    }
+    $this->info('RUT asociado a la cuenta administradora.');
+
+    return self::SUCCESS;
+})->purpose('Asociar o actualizar el RUT de una cuenta administradora existente');
+
+Artisan::command('attendance:validate-user-ruts', function (): int {
+    try {
+        $identities = (new UserRutBackfill())->normalizedRuts();
+    } catch (\RuntimeException $exception) {
+        $this->error($exception->getMessage());
+
+        return self::FAILURE;
+    }
+
+    $this->info('Validación correcta: '.count($identities).' RUT de cuenta válidos y sin duplicados. No se modificaron datos.');
+
+    return self::SUCCESS;
+})->purpose('Validar los RUT existentes antes de ejecutar el backfill de identidad');
 
 Artisan::command('attendance:change-administrator-password', function (): int {
     $email = mb_strtolower(trim((string) $this->ask('Correo de la cuenta administradora')));

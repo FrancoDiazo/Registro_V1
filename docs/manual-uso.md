@@ -53,9 +53,11 @@ No hay usuarios, contraseñas predeterminadas ni datos de trabajadores precargad
 docker compose exec app php artisan attendance:make-administrator
 ```
 
-El comando solicita nombre, correo y contraseña de al menos 12 caracteres. La contraseña no se imprime en pantalla. Inicia sesión en `http://localhost:8000/login` con ese correo y contraseña.
+El comando solicita nombre, correo, RUT válido y contraseña de al menos 12 caracteres. La contraseña no se imprime en pantalla. Inicia sesión en `http://localhost:8000/login` con el RUT y la contraseña.
 
-Este comando crea una cuenta con rol `administrator`; no crea un perfil de trabajador. Solo úsalo si el correo no está registrado. Si los contenedores aún no están iniciados, puedes crearla con `docker compose run --rm --no-deps app php artisan attendance:make-administrator`, siempre que PostgreSQL esté disponible y las migraciones ya se hayan ejecutado.
+Este comando crea una cuenta con rol `administrator`; no crea un perfil de trabajador. Solo úsalo si el correo y el RUT no están registrados. Si los contenedores aún no están iniciados, puedes crearla con `docker compose run --rm --no-deps app php artisan attendance:make-administrator`, siempre que PostgreSQL esté disponible y las migraciones ya se hayan ejecutado.
+
+Para asociar un RUT a una cuenta administradora preexistente, ejecuta `docker compose exec app php artisan attendance:assign-administrator-rut`. El comando pide el correo para identificar la cuenta y el RUT que se guardará; el correo no sirve para iniciar sesión. Asigna un RUT único y válido por administrador.
 
 ### Crear una cuenta de trabajador
 
@@ -63,19 +65,35 @@ Las cuentas de trabajador se crean desde el panel, no mediante un comando Artisa
 
 1. Inicia sesión con una cuenta administradora.
 2. Abre el panel de administración y el formulario de creación de trabajadores.
-3. Completa nombre, correo, identificador laboral y contraseña inicial.
+3. Completa nombre, correo, RUT válido y contraseña inicial.
 4. Entrega la contraseña inicial al trabajador por un canal seguro. No la envíes por este repositorio ni la compartas en logs o capturas.
 
-El panel crea el usuario con rol `worker` y su perfil laboral asociado. No insertes cuentas manualmente en PostgreSQL. No hay un comando incluido para crear trabajadores.
+El panel crea el usuario con rol `worker` y su perfil laboral asociado. El RUT normalizado se guarda en la cuenta y en el perfil laboral; la base de datos hace único el RUT de autenticación entre trabajadores y administradores. No insertes cuentas manualmente en PostgreSQL. No hay un comando incluido para crear trabajadores.
 
 ## 4. Inicio y cierre de sesión
 
-1. En la pantalla **Iniciar sesión**, escribe el correo y la contraseña asignados.
+1. En la pantalla **Iniciar sesión**, ingresa solo tu RUT y contraseña. El campo acepta puntos y guion opcionales. Trabajadores usan el RUT de su perfil y administradores el RUT asociado a su cuenta.
 2. **Mantener sesión** es opcional. En un dispositivo compartido, no lo selecciones y cierra sesión al terminar.
 3. El administrador llega al panel de administración; el trabajador, a su pantalla de marcación.
 4. Para cerrar sesión, abre **Mi cuenta** y pulsa **Cerrar sesión**.
 
-El MVP permite recuperar una contraseña desde **¿Olvidaste tu contraseña?** si la cuenta tiene un correo verificado asociado. No ofrece cambio de contraseña desde una sesión activa ni autenticación multifactor. Para actualizar administrativamente la clave de una cuenta administradora, ejecuta `docker compose exec app php artisan attendance:change-administrator-password`; el comando solicita el correo y la nueva clave de forma interactiva, sin imprimir la clave ni guardarla en texto plano. No cierra sesiones web que ya estaban iniciadas. Si la cuenta no tiene correo verificado, administración debe resolverlo según el procedimiento corporativo documentado en [correo-y-recuperacion.md](./correo-y-recuperacion.md).
+El MVP permite recuperar una contraseña desde **¿Olvidaste tu contraseña?** usando el correo verificado asociado; el restablecimiento sigue siendo por correo aunque el inicio de sesión sea solo por RUT. No ofrece cambio de contraseña desde una sesión activa ni autenticación multifactor. Para actualizar administrativamente la clave de una cuenta administradora, ejecuta `docker compose exec app php artisan attendance:change-administrator-password`; el comando solicita el correo para localizar la cuenta y la nueva clave de forma interactiva, sin imprimir la clave ni guardarla en texto plano. No cierra sesiones web que ya estaban iniciadas. Si la cuenta no tiene correo verificado, administración debe resolverlo según el procedimiento corporativo documentado en [correo-y-recuperacion.md](./correo-y-recuperacion.md).
+
+### Actualización de cuentas existentes para RUT único
+
+La migración `2026_10_19_000002_backfill_unique_user_ruts` copia a `usuarios.rut` el RUT válido del perfil de cada trabajador y lo normaliza. Valida también los RUT ya asociados a administradores y requiere que cada cuenta tenga el perfil/RUT necesario para su rol. Aborta la migración completa si encuentra trabajadores sin perfil, administradores sin RUT, un valor inválido, discrepante o duplicado. No inventa ni corrige identificadores antiguos.
+
+En una actualización de una base existente, el primer arranque puede aplicar la migración que agrega la columna y detenerse en el backfill si faltan RUT administrativos o hay datos por resolver. Con la base activa y el contenedor app actualizado, sigue esta secuencia durante mantenimiento:
+
+```powershell
+# Para cada administrador que aún no tenga RUT, asócialo con identidad verificada:
+docker compose run --rm --no-deps app php artisan attendance:assign-administrator-rut
+
+# Revisa datos existentes; este comando solo lee y no modifica registros:
+docker compose run --rm --no-deps app php artisan attendance:validate-user-ruts
+```
+
+`attendance:assign-administrator-rut` solicita el correo solo para localizar la cuenta existente; el correo no es un identificador de acceso. Repite el comando para cada administrador pendiente. El preflight debe terminar correctamente antes de considerar listo el backfill. Si reporta cuentas por ID, valida y corrige sus datos mediante el procedimiento corporativo aprobado; no inventes RUT ni deshabilites el índice único. Restaura previamente un respaldo en PostgreSQL aislado y ensaya allí la secuencia completa. En producción usa una ventana de mantenimiento, pausa app/workers/tareas, verifica el respaldo y vuelve a iniciar app/queue para que Laravel complete la migración. El login consulta únicamente `usuarios.rut`.
 
 ## 5. Uso del trabajador
 
@@ -123,6 +141,18 @@ Para instalarla en la pantalla de inicio del teléfono, abre la aplicación desd
 4. Para reportar una marca faltante o incorrecta, usa **Solicitar una corrección**. Indica un motivo de al menos 10 caracteres; puedes asociar una marca, sugerir otro tipo y/o proponer fecha y hora.
 5. La solicitud queda pendiente para administración. Su envío no cambia el evento original ni crea por sí mismo una marca corregida.
 
+### Configurar o personalizar la vista del trabajador
+
+La cuenta debe tener rol `worker` y un perfil de trabajador asociado. Administración crea ambos desde **Trabajadores** en su panel; allí ingresa nombre, correo, RUT y contraseña inicial. El RUT se valida y se almacena normalizado como `12345678-5`; también se puede ingresar con puntos, por ejemplo `12.345.678-5`.
+
+Para modificar la pantalla de forma técnica:
+
+- El marcado, estado de conexión, pendientes y actividad están en [dashboard.blade.php](../resources/views/attendance/dashboard.blade.php). Cambia aquí la presentación y el orden de las secciones sin quitar los identificadores HTML usados por el JavaScript offline.
+- Los datos que se envían a esa vista se preparan en [AttendanceController.php](../app/Http/Controllers/AttendanceController.php). Mantén las consultas restringidas al trabajador autenticado.
+- Los colores, tamaños y estilos responsive compartidos están en [app.css](../public/css/app.css); la navegación común está en [app.blade.php](../resources/views/layouts/app.blade.php).
+
+Los cambios puramente visuales se hacen en Blade/CSS. Cambios en tipos de marcación, persistencia o sincronización requieren modificar y probar también el endpoint y el cliente offline; no cambies esas reglas desde la vista.
+
 ### Recuperar contraseña y recibir confirmaciones
 
 - En el inicio de sesión selecciona **¿Olvidaste tu contraseña?** e ingresa el correo asociado. La pantalla siempre muestra el mismo mensaje para no revelar si la cuenta existe. Si el correo está verificado, se envía un enlace temporal de un solo uso; define una contraseña nueva de al menos 12 caracteres.
@@ -135,7 +165,7 @@ El panel es accesible solo a cuentas administradoras activas. En escritorio ofre
 
 ### Trabajadores
 
-- Crea un trabajador con nombre, correo, identificador laboral único y contraseña inicial de al menos 12 caracteres.
+- Crea un trabajador con nombre, correo, RUT chileno válido y contraseña inicial de al menos 12 caracteres. El RUT acepta puntos y guion opcionales; se normaliza y se verifica que no esté asociado ya a otro perfil.
 - Comparte la contraseña inicial por un canal seguro.
 - Consulta el listado y cambia el estado entre activo e inactivo. Al desactivarlo, también se desactiva la cuenta de acceso.
 - No existe edición general del perfil ni gestión de cuentas administradoras desde este panel.
@@ -216,7 +246,7 @@ Abre `http://localhost:8000/login` cuando `app` esté activo y la base `db` figu
 ### No puedo entrar o no existe una cuenta administradora
 
 - Si todavía no creaste un administrador, usa el comando de la sección 3.
-- Comprueba que usas el correo y contraseña asignados; no hay credenciales por defecto.
+- Comprueba que usas el RUT asociado a la cuenta y la contraseña asignada; no hay credenciales por defecto. El correo no se acepta como identificador de inicio de sesión.
 - Para una cuenta con correo verificado, usa **¿Olvidaste tu contraseña?** en `/login`. Para crear el primer administrador, ejecuta el comando de la sección 3.
 
 ### Las marcas siguen pendientes

@@ -14,15 +14,15 @@
     <div class="section-heading"><div><p class="eyebrow">Personas</p><h2 id="employees-heading">Trabajadores</h2></div></div>
     <form method="post" action="{{ route('admin.employees.store') }}" class="form-grid">
         @csrf
-        <label>Nombre<input name="name" maxlength="255" required></label>
-        <label>Correo<input name="email" type="email" maxlength="255" required></label>
-        <label>Identificador laboral<input name="employee_number" maxlength="64" required></label>
+        <label>Nombre<input name="name" maxlength="255" value="{{ old('name') }}" required></label>
+        <label>Correo<input name="email" type="email" maxlength="255" value="{{ old('email') }}" required></label>
+        <label>RUT<input name="employee_number" maxlength="12" value="{{ old('employee_number') }}" autocomplete="off" aria-describedby="employee-rut-help" required><small id="employee-rut-help" class="muted">Con o sin puntos y guion; se valida y guarda normalizado.</small></label>
         <label>Contraseña inicial (mínimo 12 caracteres)<input name="password" type="password" minlength="12" required></label>
         <button class="button primary" type="submit">Crear trabajador</button>
     </form>
-    <div class="table-wrap"><table><thead><tr><th>Trabajador</th><th>Identificador</th><th>Estado</th></tr></thead><tbody>
+    <div class="table-wrap"><table><thead><tr><th>Trabajador</th><th>RUT</th><th>Estado</th></tr></thead><tbody>
         @forelse ($employees as $employee)
-            <tr><td data-label="Trabajador">{{ $employee->user->name }}<small>{{ $employee->user->email }}</small></td><td data-label="Identificador">{{ $employee->employee_number }}</td><td data-label="Estado"><span>{{ $employee->status === 'active' ? 'Activo' : 'Inactivo' }}</span><form method="post" action="{{ route('admin.employees.status', $employee) }}">@csrf<input type="hidden" name="status" value="{{ $employee->status === 'active' ? 'inactive' : 'active' }}"><button class="button secondary" type="submit">{{ $employee->status === 'active' ? 'Desactivar' : 'Activar' }}</button></form></td></tr>
+            <tr><td data-label="Trabajador">{{ $employee->user->name }}<small>{{ $employee->user->email }}</small></td><td data-label="RUT">{{ \App\Support\ChileanRut::format($employee->employee_number) }}</td><td data-label="Estado"><span>{{ $employee->status === 'active' ? 'Activo' : 'Inactivo' }}</span><form method="post" action="{{ route('admin.employees.status', $employee) }}">@csrf<input type="hidden" name="status" value="{{ $employee->status === 'active' ? 'inactive' : 'active' }}"><button class="button secondary" type="submit">{{ $employee->status === 'active' ? 'Desactivar' : 'Activar' }}</button></form></td></tr>
         @empty
             <tr><td colspan="3">No hay trabajadores.</td></tr>
         @endforelse
@@ -43,7 +43,7 @@
     </form>
     <form method="post" action="{{ route('admin.assignments.store') }}" class="form-grid assignment-form">
         @csrf
-        <label>Trabajador<select name="employee_id" required>@foreach ($employees as $employee)<option value="{{ $employee->id }}">{{ $employee->user->name }} · {{ $employee->employee_number }}</option>@endforeach</select></label>
+        <label>Trabajador<select name="employee_id" required>@foreach ($employees as $employee)<option value="{{ $employee->id }}">{{ $employee->user->name }} · {{ \App\Support\ChileanRut::format($employee->employee_number) }}</option>@endforeach</select></label>
         <label>Jornada<select name="work_schedule_id" required>@foreach ($schedules as $schedule)<option value="{{ $schedule->id }}">{{ $schedule->name }}</option>@endforeach</select></label>
         <label>Vigente desde<input name="valid_from" type="date" required></label>
         <label>Vigente hasta (opcional)<input name="valid_until" type="date"></label>

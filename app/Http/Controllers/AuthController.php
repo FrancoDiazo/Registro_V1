@@ -2,11 +2,13 @@
 
 namespace App\Http\Controllers;
 
+use App\Models\User;
+use App\Rules\ValidChileanRut;
+use App\Support\ChileanRut;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Auth;
 use Illuminate\Support\Facades\RateLimiter;
-use Illuminate\Support\Str;
 use Illuminate\Validation\ValidationException;
 use Illuminate\View\View;
 
@@ -19,21 +21,28 @@ class AuthController extends Controller
 
     public function store(Request $request): RedirectResponse
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'email'],
+        $data = $request->validate([
+            'rut' => ['required', 'string', 'max:12', new ValidChileanRut()],
             'password' => ['required', 'string'],
         ]);
-        $key = Str::lower($credentials['email']).'|'.$request->ip();
+        $normalizedIdentifier = ChileanRut::compact($data['rut']);
+        $key = $normalizedIdentifier.'|'.$request->ip();
 
         if (RateLimiter::tooManyAttempts($key, 5)) {
             throw ValidationException::withMessages([
-                'email' => 'Demasiados intentos. Espera un momento antes de volver a intentarlo.',
+                'rut' => 'Demasiados intentos. Espera un momento antes de volver a intentarlo.',
             ]);
         }
 
-        if (! Auth::attempt($credentials + ['is_active' => true], $request->boolean('remember'))) {
+        $user = User::query()->where('rut', ChileanRut::normalize($data['rut']))->first();
+
+        if (! $user || ! Auth::attempt([
+            'email' => $user->email,
+            'password' => $data['password'],
+            'is_active' => true,
+        ], $request->boolean('remember'))) {
             RateLimiter::hit($key, 60);
-            throw ValidationException::withMessages(['email' => 'Las credenciales no son válidas.']);
+            throw ValidationException::withMessages(['rut' => 'Las credenciales no son válidas.']);
         }
 
         RateLimiter::clear($key);

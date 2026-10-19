@@ -6,8 +6,8 @@ La aplicación usa PostgreSQL. Este documento refleja el esquema vigente con tab
 
 | Tabla | Propósito | Columnas |
 |---|---|---|
-| `usuarios` | Cuentas de acceso, rol y estado. | `id`, `name`, `email`, `email_verified_at`, `password`, `role`, `is_active`, `remember_token`, `created_at`, `updated_at` |
-| `trabajadores` | Perfil laboral asociado a una cuenta. | `id`, `user_id`, `employee_number`, `status`, `created_at`, `updated_at` |
+| `usuarios` | Cuentas de acceso, RUT único de autenticación, rol y estado. | `id`, `name`, `email`, `rut` (nullable, único entre todas las cuentas), `email_verified_at`, `password`, `role`, `is_active`, `remember_token`, `created_at`, `updated_at` |
+| `trabajadores` | Perfil laboral asociado a una cuenta. | `id`, `user_id`, `employee_number` (RUT del trabajador), `status`, `created_at`, `updated_at` |
 | `jornadas_laborales` | Definición configurable de jornada y colación. | `id`, `name`, `timezone`, `expected_minutes_per_week`, `break_minutes`, `break_is_unpaid`, `days_of_week`, `shift_start`, `shift_end`, `is_active`, `created_at`, `updated_at` |
 | `asignaciones_jornada` | Jornada asignada a un trabajador durante un período. | `id`, `employee_id`, `work_schedule_id`, `valid_from`, `valid_until`, `created_at`, `updated_at` |
 | `marcaciones_asistencia` | Eventos originales de asistencia, append-only desde la aplicación. | `id`, `event_uuid`, `employee_id`, `event_type`, `occurred_at_device`, `device_offset_minutes`, `client_timezone`, `received_at_server`, `device_id`, `device_event_seq`, `offline`, `created_at`, `updated_at` |
@@ -33,7 +33,7 @@ usuarios 1 ── N solicitudes_correccion (solicitante/resolutor)
 usuarios 1 ── N incidencias_asistencia (revisor)
 ```
 
-Las claves foráneas usan `user_id`, `employee_id`, `work_schedule_id`, `attendance_event_id`, `requested_by`, `resolved_by` y `reviewed_by`. La bandeja impone unicidad en `attendance_event_id`. `event_uuid` es único para permitir sincronización idempotente. Las marcas originales no se editan ni eliminan desde la aplicación; las solicitudes y revisiones se guardan por separado.
+Las claves foráneas usan `user_id`, `employee_id`, `work_schedule_id`, `attendance_event_id`, `requested_by`, `resolved_by` y `reviewed_by`. La bandeja impone unicidad en `attendance_event_id`. `event_uuid` es único para permitir sincronización idempotente. `usuarios.rut` es el identificador autenticable único para trabajadores y administradores. `trabajadores.employee_number` conserva el RUT laboral del trabajador; la migración de backfill valida que coincida, lo normaliza y lo copia a `usuarios.rut`. Una discrepancia o colisión detiene la migración sin completar cambios. El comando de solo lectura `attendance:validate-user-ruts` permite revisar esos datos antes del despliegue. Las marcas originales no se editan ni eliminan desde la aplicación; las solicitudes y revisiones se guardan por separado.
 
 ## Tablas internas de Laravel
 

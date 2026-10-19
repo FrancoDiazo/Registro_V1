@@ -10,12 +10,16 @@ use App\Models\Employee;
 use App\Models\ScheduleAssignment;
 use App\Models\User;
 use App\Models\WorkSchedule;
+use App\Rules\ValidChileanRut;
+use App\Support\ChileanRut;
+use App\Support\RutConflict;
 use App\Services\AttendanceSummaryService;
 use Carbon\CarbonImmutable;
 use Illuminate\Http\RedirectResponse;
 use Illuminate\Http\Request;
 use Illuminate\Support\Facades\DB;
 use Illuminate\Support\Facades\Hash;
+use Illuminate\Support\Facades\Validator;
 use Illuminate\Validation\Rule;
 use Illuminate\View\View;
 use Symfony\Component\HttpFoundation\StreamedResponse;
@@ -94,27 +98,48 @@ class AdminController extends Controller
 
     public function createEmployee(Request $request): RedirectResponse
     {
-        $data = $request->validate([
+        $input = $request->all();
+        if (is_string($input['employee_number'] ?? null)) {
+            $input['employee_number'] = ChileanRut::normalize($input['employee_number']);
+        }
+        $data = Validator::make($input, [
             'name' => ['required', 'string', 'max:255'],
             'email' => ['required', 'email', 'max:255', 'unique:usuarios,email'],
-            'employee_number' => ['required', 'string', 'max:64', 'unique:trabajadores,employee_number'],
+            'employee_number' => [
+                'required',
+                'string',
+                'max:10',
+                new ValidChileanRut(),
+                'unique:usuarios,rut',
+            ],
             'password' => ['required', 'string', 'min:12', 'max:255'],
-        ]);
+        ])->validate();
 
-        DB::transaction(function () use ($data, $request): void {
-            $user = User::create([
-                'name' => $data['name'],
-                'email' => $data['email'],
-                'password' => Hash::make($data['password']),
-                'role' => 'worker',
-            ]);
+        try {
+            DB::transaction(function () use ($data, $request): void {
+                $user = User::create([
+                    'name' => $data['name'],
+                    'email' => $data['email'],
+                    'rut' => $data['employee_number'],
+                    'password' => Hash::make($data['password']),
+                    'role' => 'worker',
+                ]);
 
-            $employee = Employee::create([
-                'user_id' => $user->id,
-                'employee_number' => $data['employee_number'],
-            ]);
-            $this->audit($request, 'employee.created', $employee);
-        });
+                $employee = Employee::create([
+                    'user_id' => $user->id,
+                    'employee_number' => $data['employee_number'],
+                ]);
+                $this->audit($request, 'employee.created', $employee);
+            });
+        } catch (\Illuminate\Database\QueryException $exception) {
+            if (! RutConflict::isUniqueViolation($exception)) {
+                throw $exception;
+            }
+
+            return back()
+                ->withErrors(['employee_number' => 'Este RUT ya está asociado a otra cuenta.'])
+                ->withInput($request->except('password'));
+        }
 
         return back()->with('status', 'Trabajador creado.');
     }
